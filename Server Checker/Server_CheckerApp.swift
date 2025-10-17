@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct Server_CheckerApp: App {
+    @StateObject private var store = ServerStore()
+    
     var body: some Scene {
         WindowGroup {
-            ServerListView()
+            ServerListView().environmentObject(store)
         }
     }
 }

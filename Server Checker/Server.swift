@@ -5,6 +5,7 @@ struct Server: Identifiable, Codable, Hashable {
     var name: String
     var host: String // IP or hostname
     var port: Int = 80
+    var category: String? = nil
 }
 
 enum ServerStatus: String, Codable {
