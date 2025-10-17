@@ -284,10 +284,6 @@ struct ServerListView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    Text("The app is free, if you like it, consider giving a star on GitHub!")
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
                     Button("Close") {
                         showingAbout = false
                     }
