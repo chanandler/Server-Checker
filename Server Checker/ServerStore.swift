@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Network
+import SwiftUI
 
 @MainActor
 final class ServerStore: ObservableObject {
@@ -9,9 +10,22 @@ final class ServerStore: ObservableObject {
 
     private let storageKey = "saved_servers_v1"
     private var lastRefreshAt: Date = .distantPast
+    private var refreshTimer: Timer?
 
     init() {
         load()
+        // Schedule the timer on the main run loop using target-selector to avoid capturing self in a long-lived closure.
+        refreshTimer = Timer.scheduledTimer(timeInterval: 15.0, target: self, selector: #selector(handleRefreshTimer(_:)), userInfo: nil, repeats: true)
+        RunLoop.main.add(refreshTimer!, forMode: .common)
+    }
+    
+    deinit {
+        refreshTimer?.invalidate()
+    }
+
+    @objc private func handleRefreshTimer(_ timer: Timer) {
+        // We are already on @MainActor due to the class annotation
+        refreshAllStatuses()
     }
 
     func add(_ server: Server) {
@@ -83,33 +97,43 @@ final class ServerStore: ObservableObject {
 
     func checkStatus(for server: Server) {
         statuses[server.id] = .unknown
-        attemptCheck(server: server, attempt: 1)
+        tcpAttempt(server: server, attempt: 1)
     }
 
-    private func attemptCheck(server: Server, attempt: Int) {
+    private func tcpAttempt(server: Server, attempt: Int) {
+        // Validate port safely
+        guard let port = NWEndpoint.Port(rawValue: UInt16(server.port)) else {
+            statuses[server.id] = .offline
+            return
+        }
+
         let params = NWParameters.tcp
-        let endpoint = NWEndpoint.hostPort(
-            host: .init(server.host),
-            port: .init(integerLiteral: NWEndpoint.Port.IntegerLiteralType(server.port))
-        )
+        let endpoint = NWEndpoint.hostPort(host: .init(server.host), port: port)
         let conn = NWConnection(to: endpoint, using: params)
 
-        let timeout: TimeInterval = 5
+        // This flag is only accessed on the main actor via Task { @MainActor in }
         var didResolve = false
 
-        conn.stateUpdateHandler = { [weak self] state in
+        conn.stateUpdateHandler = { state in
             Task { @MainActor in
-                guard let self else { return }
                 switch state {
                 case .ready:
                     didResolve = true
                     self.statuses[server.id] = .online
                     conn.cancel()
                 case .failed, .cancelled:
-                    // Only mark offline if we're out of retries
-                    if attempt >= 2 && !didResolve {
-                        self.statuses[server.id] = .offline
+                    if !didResolve {
+                        if attempt < 2 {
+                            // retry once after short backoff on main actor context
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 500_000_000)
+                                self.tcpAttempt(server: server, attempt: attempt + 1)
+                            }
+                        } else {
+                            self.statuses[server.id] = .offline
+                        }
                     }
+                    conn.cancel()
                 default:
                     break
                 }
@@ -118,20 +142,16 @@ final class ServerStore: ObservableObject {
 
         conn.start(queue: .global(qos: .utility))
 
-        // Timeout handler
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                if !didResolve {
-                    conn.cancel()
-                    if attempt < 2 {
-                        // Retry with small backoff
-                        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                            self?.attemptCheck(server: server, attempt: attempt + 1)
-                        }
-                    } else {
-                        self.statuses[server.id] = .offline
-                    }
+        // Timeout after 3 seconds, rescheduling on main actor
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if !didResolve {
+                conn.cancel()
+                if attempt < 2 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    self.tcpAttempt(server: server, attempt: attempt + 1)
+                } else {
+                    self.statuses[server.id] = .offline
                 }
             }
         }
