@@ -276,11 +276,11 @@ struct ServerListView: View {
                 VStack(spacing: 16) {
                     Text("Server Monitor v\(versionText)")
                         .font(.headline)
-                    Text("A small utlity that lets you quickly check whether a device is active and online on the network that your device is currently connected to.")
+                    Text("A small utlity that lets you quickly check whether a device is active and online, on the network that your device is currently connected to.")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    Text("The application will automatically refresh itself every 15 seconds. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please open an issue on [GitHub](https://github.com/b3ll/ServerMonitor)")
+                    Text("The application will automatically refresh itself. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please open an issue on [GitHub](https://github.com/b3ll/ServerMonitor)")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
