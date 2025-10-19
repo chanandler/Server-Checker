@@ -217,12 +217,24 @@ struct ServerListView: View {
             .listStyle(.plain)
             .listRowSpacing(4)
             .environment(\.defaultMinListRowHeight, 34)
+            .refreshable {
+                store.refreshAllStatuses()
+            }
             .overlay {
                 if store.servers.isEmpty {
                     ContentUnavailableView("No Servers", systemImage: "server.rack", description: Text("Add a server to begin"))
                 }
             }
             .navigationTitle("Servers")
+            .task {
+                // Perform an initial refresh with a small delay, but avoid doing so while any sheet is shown
+                // to keep sheet presentation responsive.
+                while showingAdd || showingSettings || showingAbout || showingCategoryManagement {
+                    try? await Task.sleep(nanoseconds: 200_000_000) // wait 200ms and check again
+                }
+                try? await Task.sleep(nanoseconds: 200_000_000) // small debounce after appear
+                store.refreshAllStatuses()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -251,15 +263,15 @@ struct ServerListView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        store.refreshAllStatuses()
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms debounce
+                            store.refreshAllStatuses()
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh")
                 }
-            }
-            .onAppear {
-                store.refreshAllStatuses()
             }
             .sheet(isPresented: $showingAdd) {
                 AddEditServerView(existingCategories: store.servers.compactMap { s in
@@ -280,7 +292,7 @@ struct ServerListView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    Text("The application will automatically refresh itself. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please open an issue on [GitHub](https://github.com/b3ll/ServerMonitor)")
+                    Text("The application will automatically refresh itself. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please open an issue through the support link.")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
