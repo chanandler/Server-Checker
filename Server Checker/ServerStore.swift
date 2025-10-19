@@ -11,6 +11,7 @@ final class ServerStore: ObservableObject {
     @Published var timeoutSeconds: Int = 3 {
         didSet { UserDefaults.standard.set(timeoutSeconds, forKey: "timeout_seconds_v1") }
     }
+    @Published var isInteractionSensitive: Bool = false
 
     private let storageKey = "saved_servers_v1"
     private var lastRefreshAt: Date = .distantPast
@@ -18,6 +19,9 @@ final class ServerStore: ObservableObject {
     
     private let categoriesKey = "saved_categories_v1"
     @Published private(set) var categories: [String] = [] // Persisted list including empty categories
+
+    private var pendingStatusUpdates: [UUID: ServerStatus] = [:]
+    private var isBatchScheduled = false
 
     private func updateLastUpdatedIfComplete() {
         // Only consider complete if we have servers; if none, set lastUpdated now.
@@ -57,7 +61,7 @@ final class ServerStore: ObservableObject {
     }
 
     @objc private func handleRefreshTimer(_ timer: Timer) {
-        // We are already on @MainActor due to the class annotation
+        if isInteractionSensitive { return }
         refreshAllStatuses()
     }
 
@@ -159,6 +163,23 @@ final class ServerStore: ObservableObject {
         }
     }
     
+    private func enqueueStatusUpdate(id: UUID, status: ServerStatus) {
+        pendingStatusUpdates[id] = status
+        if !isBatchScheduled {
+            isBatchScheduled = true
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms batch window
+                let snapshot = pendingStatusUpdates
+                pendingStatusUpdates.removeAll()
+                isBatchScheduled = false
+                for (sid, st) in snapshot {
+                    self.statuses[sid] = st
+                }
+                self.updateLastUpdatedIfComplete()
+            }
+        }
+    }
+    
     /// Returns true if the given host string looks like a private IPv4 address (RFC1918)
     private func isPrivateIPv4(_ host: String) -> Bool {
         // quick IPv4 check
@@ -182,7 +203,7 @@ final class ServerStore: ObservableObject {
         // Mark private LAN hosts as unknown to avoid showing stale "online" when off-LAN
         for server in servers {
             if isPrivateIPv4(server.host) {
-                statuses[server.id] = .unknown
+                enqueueStatusUpdate(id: server.id, status: .unknown)
             }
         }
         // Trigger a fresh round of checks
@@ -190,6 +211,7 @@ final class ServerStore: ObservableObject {
     }
 
     func refreshAllStatuses() {
+        if isInteractionSensitive { return }
         let now = Date()
         if now.timeIntervalSince(lastRefreshAt) < 1 { return }
         lastRefreshAt = now
@@ -200,7 +222,7 @@ final class ServerStore: ObservableObject {
     }
 
     func checkStatus(for server: Server) {
-        statuses[server.id] = .unknown
+        enqueueStatusUpdate(id: server.id, status: .unknown)
         updateLastUpdatedIfComplete()
         tcpAttempt(server: server, attempt: 1)
     }
@@ -208,7 +230,7 @@ final class ServerStore: ObservableObject {
     private func tcpAttempt(server: Server, attempt: Int) {
         // Validate port safely
         guard let port = NWEndpoint.Port(rawValue: UInt16(server.port)) else {
-            statuses[server.id] = .offline
+            enqueueStatusUpdate(id: server.id, status: .offline)
             updateLastUpdatedIfComplete()
             return
         }
@@ -229,8 +251,7 @@ final class ServerStore: ObservableObject {
                 switch state {
                 case .ready:
                     didResolve = true
-                    self.statuses[server.id] = .online
-                    self.updateLastUpdatedIfComplete()
+                    self.enqueueStatusUpdate(id: server.id, status: .online)
                     conn.cancel()
                 case .failed, .cancelled:
                     if !didResolve {
@@ -241,8 +262,7 @@ final class ServerStore: ObservableObject {
                                 self.tcpAttempt(server: server, attempt: attempt + 1)
                             }
                         } else {
-                            self.statuses[server.id] = .offline
-                            self.updateLastUpdatedIfComplete()
+                            self.enqueueStatusUpdate(id: server.id, status: .offline)
                         }
                     }
                     conn.cancel()
@@ -263,8 +283,7 @@ final class ServerStore: ObservableObject {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     self.tcpAttempt(server: server, attempt: attempt + 1)
                 } else {
-                    self.statuses[server.id] = .offline
-                    self.updateLastUpdatedIfComplete()
+                    self.enqueueStatusUpdate(id: server.id, status: .offline)
                 }
             }
         }

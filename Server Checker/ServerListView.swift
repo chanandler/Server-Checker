@@ -40,6 +40,7 @@ struct ServerListView: View {
     @State private var showingSettings = false
     @State private var showingCategoryManagement = false
     @StateObject private var networkObserver = NetworkStatusObserver()
+    @State private var editingServer: Server? = nil
     
     private var networkIconName: String {
         switch networkObserver.interfaceDescription {
@@ -188,10 +189,7 @@ struct ServerListView: View {
                     let group = pair.0
                     Section(
                         header: CategoryHeaderView(
-                            title: group.category ?? "Uncategorised",
-                            onDrop: { providers in
-                                handleDrop(to: group.category, providers: providers)
-                            }
+                            title: group.category ?? "Uncategorised"
                         )
                     ) {
                         ForEach(group.items) { server in
@@ -201,8 +199,7 @@ struct ServerListView: View {
                             )
                             .padding(.leading, 12)
                             .contentShape(Rectangle())
-                            .onTapGesture { store.checkStatus(for: server) }
-                            .onDrag { NSItemProvider(object: server.id.uuidString as NSString) }
+                            .onTapGesture { editingServer = server }
                         }
                         .onDelete { _ in
                             let indexes = mappedIndexes(for: group.items)
@@ -229,7 +226,7 @@ struct ServerListView: View {
             .task {
                 // Perform an initial refresh with a small delay, but avoid doing so while any sheet is shown
                 // to keep sheet presentation responsive.
-                while showingAdd || showingSettings || showingAbout || showingCategoryManagement {
+                while showingAdd || showingSettings || showingAbout || showingCategoryManagement || store.isInteractionSensitive {
                     try? await Task.sleep(nanoseconds: 200_000_000) // wait 200ms and check again
                 }
                 try? await Task.sleep(nanoseconds: 200_000_000) // small debounce after appear
@@ -274,12 +271,11 @@ struct ServerListView: View {
                 }
             }
             .sheet(isPresented: $showingAdd) {
-                AddEditServerView(existingCategories: store.servers.compactMap { s in
-                    let t = s.category?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    return t.isEmpty ? nil : t
-                }.uniqued()) { newServer in
+                AddEditServerView(existingCategories: store.allCategoriesIncludingEmpty()) { newServer in
                     store.add(newServer)
                 }
+                .onAppear { store.isInteractionSensitive = true }
+                .onDisappear { store.isInteractionSensitive = false }
             }
             .sheet(isPresented: $showingAbout) {
                 let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
@@ -301,16 +297,28 @@ struct ServerListView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+                .onAppear { store.isInteractionSensitive = true }
+                .onDisappear { store.isInteractionSensitive = false }
                 .padding()
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $showingCategoryManagement) {
                 CategoryManagementView()
                     .environmentObject(store)
+                    .onAppear { store.isInteractionSensitive = true }
+                    .onDisappear { store.isInteractionSensitive = false }
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
                     .environmentObject(store)
+                    .onAppear { store.isInteractionSensitive = true }
+                    .onDisappear { store.isInteractionSensitive = false }
+            }
+            .sheet(item: $editingServer) { server in
+                EditServerCategorySheet(server: server)
+                    .environmentObject(store)
+                    .onAppear { store.isInteractionSensitive = true }
+                    .onDisappear { store.isInteractionSensitive = false }
             }
         }
     }
@@ -351,12 +359,6 @@ struct ServerRow: View {
 
 struct CategoryHeaderView: View {
     let title: String
-    let onDropHandler: ([NSItemProvider]) -> Bool
-
-    init(title: String, onDrop: @escaping ([NSItemProvider]) -> Bool) {
-        self.title = title
-        self.onDropHandler = onDrop
-    }
 
     var body: some View {
         HStack {
@@ -365,7 +367,6 @@ struct CategoryHeaderView: View {
             Spacer()
         }
         .contentShape(Rectangle())
-        .onDrop(of: [UTType.text], isTargeted: nil, perform: onDropHandler)
     }
 }
 
@@ -431,6 +432,68 @@ private struct SummaryHeaderView: View {
         }
         .padding(.vertical, 6)
         .font(.subheadline)
+    }
+}
+
+private struct EditServerCategorySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: ServerStore
+
+    let server: Server
+    @State private var selectedCategory: String = ""
+    @State private var newCategory: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Server") {
+                    Text(server.name)
+                    Text("\(server.host):\(server.port)")
+                        .foregroundStyle(.secondary)
+                }
+                Section("Category") {
+                    Picker("Assign to", selection: $selectedCategory) {
+                        Text("Uncategorised").tag("")
+                        ForEach(store.allCategoriesIncludingEmpty(), id: \.self) { cat in
+                            Text(cat).tag(cat)
+                        }
+                    }
+                }
+                Section("Create New Category") {
+                    HStack {
+                        TextField("New category", text: $newCategory)
+                            .textInputAutocapitalization(.words)
+                        Button("Add") {
+                            let t = newCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !t.isEmpty else { return }
+                            store.addCategory(t)
+                            selectedCategory = t
+                            newCategory = ""
+                        }
+                        .disabled(newCategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .navigationTitle("Edit Server")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let cat = selectedCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let final: String? = cat.isEmpty ? nil : cat
+                        store.assign(serverID: server.id, toCategory: final)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                let current = server.category?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                selectedCategory = current
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
