@@ -39,6 +39,9 @@ struct ServerListView: View {
     @State private var showingAbout = false
     @State private var showingSettings = false
     @State private var showingCategoryManagement = false
+    @State private var showingTipJar = false
+    @State private var showingWelcome = false
+    @AppStorage("hasShownWelcome") private var hasShownWelcome: Bool = false
     @StateObject private var networkObserver = NetworkStatusObserver()
     @State private var editingServer: Server? = nil
     
@@ -233,11 +236,22 @@ struct ServerListView: View {
             .task {
                 // Perform an initial refresh with a small delay, but avoid doing so while any sheet is shown
                 // to keep sheet presentation responsive.
-                while showingAdd || showingSettings || showingAbout || showingCategoryManagement || store.isInteractionSensitive {
+                while showingAdd || showingSettings || showingAbout || showingCategoryManagement || showingTipJar || store.isInteractionSensitive {
                     try? await Task.sleep(nanoseconds: 200_000_000) // wait 200ms and check again
                 }
                 try? await Task.sleep(nanoseconds: 200_000_000) // small debounce after appear
                 store.refreshAllStatuses()
+            }
+            .onAppear {
+                if !hasShownWelcome { showingWelcome = true }
+                // Perform an initial refresh with a small delay, but avoid doing so while any sheet is shown
+                // to keep sheet presentation responsive.
+                // (original code below, unchanged)
+                // while showingAdd || showingSettings || showingAbout || showingCategoryManagement || showingTipJar || store.isInteractionSensitive {
+                //     try? await Task.sleep(nanoseconds: 200_000_000) // wait 200ms and check again
+                // }
+                // try? await Task.sleep(nanoseconds: 200_000_000) // small debounce after appear
+                // store.refreshAllStatuses()
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -258,8 +272,10 @@ struct ServerListView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button("Show Welcome") { showingWelcome = true }
                         Button("About") { showingAbout = true }
                         Button("Category Management") { showingCategoryManagement = true }
+                        Button("Tip Jar") { showingTipJar = true }
                     } label: {
                         Image(systemName: "gearshape")
                     }
@@ -291,11 +307,15 @@ struct ServerListView: View {
                 VStack(spacing: 16) {
                     Text("Server Monitor v\(versionText)")
                         .font(.headline)
-                    Text("A small utlity that lets you quickly check whether a device is active and online, on the network that your device is currently connected to.")
+                    Text("A small utlity that lets you quickly check whether a device is active and online, on the network that your iPhone is currently connected to.")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    Text("The application will automatically refresh itself. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please complete the form at this link: https://theyarwoods.net/support.html")
+                    Text("We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please complete the form at this link: https://theyarwoods.net/support.html")
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Text("If you like the app, consider sending a tip our way. Just tap the cog icon in the top right, and then 'Tip Jar'.")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -315,6 +335,13 @@ struct ServerListView: View {
                     .onAppear { store.isInteractionSensitive = true }
                     .onDisappear { store.isInteractionSensitive = false }
             }
+            .sheet(isPresented: $showingTipJar) {
+                NavigationStack {
+                    TipJarView()
+                }
+                .onAppear { store.isInteractionSensitive = true }
+                .onDisappear { store.isInteractionSensitive = false }
+            }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
                     .environmentObject(store)
@@ -326,6 +353,39 @@ struct ServerListView: View {
                     .environmentObject(store)
                     .onAppear { store.isInteractionSensitive = true }
                     .onDisappear { store.isInteractionSensitive = false }
+            }
+            .sheet(isPresented: $showingWelcome) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Welcome to Server Monitor")
+                        .font(.title2)
+                        .bold()
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    Text("Welcome to Server Monitor. This small utility lets you quickly check the status of devices on your network.")
+                        .font(.body)
+                        .multilineTextAlignment(.leading)
+
+                    Text("Make sure that your iPhone is connected to the same network that the devices are connected to.")
+                        .font(.body)
+                        .multilineTextAlignment(.leading)
+
+                    Text("Thanks for stopping by! Tips are never expected but always appreciated — they help keep the lights on and the coffee strong.")
+                        .font(.body)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+
+                    Button {
+                        hasShownWelcome = true
+                        showingWelcome = false
+                    } label: {
+                        Text("Close")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                .presentationDetents([.medium])
             }
         }
     }
@@ -548,4 +608,3 @@ extension Array where Element: Hashable {
         return self.filter { seen.insert($0).inserted }
     }
 }
-
