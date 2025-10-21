@@ -192,7 +192,7 @@ struct ServerListView: View {
                             title: group.category ?? "Uncategorised"
                         )
                     ) {
-                        ForEach(group.items) { server in
+                        ForEach(group.items, id: \.id) { server in
                             ServerRow(
                                 server: server,
                                 status: store.statuses[server.id] ?? .unknown
@@ -201,9 +201,16 @@ struct ServerListView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { editingServer = server }
                         }
-                        .onDelete { _ in
-                            let indexes = mappedIndexes(for: group.items)
-                            store.remove(at: indexes)
+                        .onDelete { offsets in
+                            // Map the group's local offsets to the corresponding indices in the master store.servers array
+                            let idsToDelete = offsets.compactMap { idx -> UUID? in
+                                guard group.items.indices.contains(idx) else { return nil }
+                                return group.items[idx].id
+                            }
+                            let globalIndices = idsToDelete.compactMap { id in
+                                store.servers.firstIndex(where: { $0.id == id })
+                            }
+                            store.remove(at: IndexSet(globalIndices))
                         }
                         .onMove { source, destination in
                             store.moveWithinCategory(group.category, from: source, to: destination)
