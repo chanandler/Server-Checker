@@ -295,7 +295,7 @@ struct ServerListView: View {
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    Text("The application will automatically refresh itself. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please open an issue through the support link.")
+                    Text("The application will automatically refresh itself. We will be adding more feature to the app in the future, if you have anything you'd like to suggest, please complete the form at this link: https://theyarwoods.net/support.html")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
