@@ -177,24 +177,11 @@ struct ServerListView: View {
                                 Text("No Servers")
                                     .font(.title3.weight(.semibold))
                                     .multilineTextAlignment(.center)
-                                Text("Add a server to begin")
+                                Text("To add a server, tap the + at the top of the screen")
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
                             }
-                            VStack(spacing: 8) {
-                                Image(systemName: "plus.circle")
-                                    .font(.system(size: 24, weight: .semibold))
-                                Text("Tap the + to add a server")
-                                    .font(.callout)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(16)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(Color.secondary.opacity(0.15))
-                            )
                         }
                         .frame(maxWidth: 560)
                         .frame(maxWidth: .infinity)
@@ -306,9 +293,12 @@ struct ServerListView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Show Welcome") { showingWelcome = true }
                         Button("About") { showingAbout = true }
+                        Divider()
                         Button("Category Management") { showingCategoryManagement = true }
+                        Divider()
+                        Button("Show Welcome") { showingWelcome = true }
+                        Divider()
                         Button("Tip Jar") { showingTipJar = true }
                     } label: {
                         Image(systemName: "gearshape")
@@ -383,10 +373,14 @@ struct ServerListView: View {
                     .onDisappear { store.isInteractionSensitive = false }
             }
             .sheet(item: $editingServer) { server in
-                EditServerCategorySheet(server: server)
-                    .environmentObject(store)
-                    .onAppear { store.isInteractionSensitive = true }
-                    .onDisappear { store.isInteractionSensitive = false }
+                AddEditServerView(
+                    server: server,
+                    existingCategories: store.allCategoriesIncludingEmpty()
+                ) { updated in
+                    store.update(updated)
+                }
+                .onAppear { store.isInteractionSensitive = true }
+                .onDisappear { store.isInteractionSensitive = false }
             }
             .sheet(isPresented: $showingWelcome) {
                 VStack(alignment: .leading, spacing: 16) {
