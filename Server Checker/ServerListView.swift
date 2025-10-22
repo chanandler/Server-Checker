@@ -44,6 +44,7 @@ struct ServerListView: View {
     @AppStorage("hasShownWelcome") private var hasShownWelcome: Bool = false
     @StateObject private var networkObserver = NetworkStatusObserver()
     @State private var editingServer: Server? = nil
+    @Environment(\.horizontalSizeClass) private var hSize
     
     private var networkIconName: String {
         switch networkObserver.interfaceDescription {
@@ -166,6 +167,42 @@ struct ServerListView: View {
                         isChecking: isChecking
                     )
                 }
+                if store.servers.isEmpty {
+                    Section {
+                        VStack(spacing: hSize == .compact ? 12 : 16) {
+                            Image(systemName: "server.rack")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.secondary)
+                            VStack(spacing: 6) {
+                                Text("No Servers")
+                                    .font(.title3.weight(.semibold))
+                                    .multilineTextAlignment(.center)
+                                Text("Add a server to begin")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            VStack(spacing: 8) {
+                                Image(systemName: "plus.circle")
+                                    .font(.system(size: 24, weight: .semibold))
+                                Text("Tap the + to add a server")
+                                    .font(.callout)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(16)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.secondary.opacity(0.15))
+                            )
+                        }
+                        .frame(maxWidth: 560)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, hSize == .compact ? 8 : 12)
+                        .padding(.horizontal, hSize == .compact ? 16 : 24)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                    }
+                }
                 Section {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -181,12 +218,14 @@ struct ServerListView: View {
                     }
                     .padding(.vertical, 6)
                 }
-                Section {
-                    Text("Tap the + to add a server. To delete a server, swipe the entry to the left and choose delete.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .padding(.vertical, 4)
+                if !store.servers.isEmpty {
+                    Section {
+                        Text("Tap the + to add a server. To delete a server, swipe the entry to the left and choose delete.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .padding(.vertical, 4)
+                    }
                 }
                 ForEach(groupedServers.map { ($0, stableCategoryID($0.category)) }, id: \.1) { pair in
                     let group = pair.0
@@ -226,11 +265,6 @@ struct ServerListView: View {
             .environment(\.defaultMinListRowHeight, 34)
             .refreshable {
                 store.refreshAllStatuses()
-            }
-            .overlay {
-                if store.servers.isEmpty {
-                    ContentUnavailableView("No Servers", systemImage: "server.rack", description: Text("Add a server to begin"))
-                }
             }
             .navigationTitle("Servers")
             .task {
@@ -608,3 +642,4 @@ extension Array where Element: Hashable {
         return self.filter { seen.insert($0).inserted }
     }
 }
+

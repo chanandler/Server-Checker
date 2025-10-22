@@ -3,6 +3,7 @@ import SwiftUI
 struct CategoryManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: ServerStore
+    @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var newCategory: String = ""
     @State private var renamingCategory: String? = nil
@@ -17,7 +18,11 @@ struct CategoryManagementView: View {
                     HStack {
                         TextField("Category name", text: $newCategory)
                             .textInputAutocapitalization(.words)
-                        Button("Add") { addCategory() }
+                            .submitLabel(.done)
+                            .onSubmit { addCategory() }
+                            .textFieldStyle(.roundedBorder)
+                        Button(action: addCategory) { Text("Add") }
+                            .buttonStyle(.borderedProminent)
                             .disabled(newCategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
@@ -25,37 +30,52 @@ struct CategoryManagementView: View {
                 Section("Categories") {
                     let cats = store.allCategoriesIncludingEmpty()
                     ForEach(cats, id: \.self) { cat in
-                        HStack {
+                        VStack(alignment: .leading, spacing: 8) {
                             if renamingCategory == cat {
-                                TextField("New name", text: $renameText)
-                                    .textInputAutocapitalization(.words)
-                                Spacer()
-                                Button("Save") { saveRename(original: cat) }
-                                    .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                Button("Cancel") { cancelRename() }
-                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    TextField("New name", text: $renameText)
+                                        .textInputAutocapitalization(.words)
+                                        .textFieldStyle(.roundedBorder)
+                                    HStack(spacing: 12) {
+                                        Button("Save") { saveRename(original: cat) }
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                        Button("Cancel") { cancelRename() }
+                                            .buttonStyle(.bordered)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                             } else {
-                                VStack(alignment: .leading) {
-                                    Text(cat)
-                                    Text("\(count(for: cat)) server\(count(for: cat) == 1 ? "" : "s")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(cat)
+                                            .font(.body)
+                                            .lineLimit(nil)
+                                            .multilineTextAlignment(.leading)
+                                            .minimumScaleFactor(0.9)
+                                        Text("\(count(for: cat)) server\(count(for: cat) == 1 ? "" : "s")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    HStack(spacing: 12) {
+                                        Button("Rename") {
+                                            renamingCategory = cat
+                                            renameText = cat
+                                        }
+                                        .buttonStyle(.bordered)
+                                        Button(role: .destructive) {
+                                            categoryToDelete = cat
+                                            showDeleteConfirm = true
+                                        } label: {
+                                            Text("Delete")
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
                                 }
-                                Spacer()
-                                Button("Rename") {
-                                    renamingCategory = cat
-                                    renameText = cat
-                                }
-                                .buttonStyle(.borderless)
-                                Button(role: .destructive) {
-                                    categoryToDelete = cat
-                                    showDeleteConfirm = true
-                                } label: {
-                                    Text("Delete")
-                                }
-                                .buttonStyle(.borderless)
                             }
                         }
+                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                        .contentShape(Rectangle())
                     }
                 }
             }
@@ -65,6 +85,7 @@ struct CategoryManagementView: View {
                     Button("Close") { dismiss() }
                 }
             }
+            .environment(\.defaultMinListRowHeight, 52)
             .alert("Delete Category?", isPresented: $showDeleteConfirm, presenting: categoryToDelete) { cat in
                 Button("Delete", role: .destructive) { store.deleteCategory(cat) }
                 Button("Cancel", role: .cancel) { }
